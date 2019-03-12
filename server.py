@@ -19,20 +19,9 @@ folder = ""
 # Configure the flask server
 app.config['JSON_SORT_KEYS'] = False
 
-#def repmat(mat, n):  #repmat jen pro matice [x,1]
-#    x = mat.shape
-
-#    matrix = np.zeros((x[0], n))
-#    for i in range(n):
-#        matrix[0, i] = mat[0]
-#        matrix[1, i] = mat[1]
-#        matrix[2, i] = mat[2]
-
-#    return matrix
-
 
 def calculate_transform(holCams, colCams):
-    print("Calculationg transform")
+    print("Calculating transform")
     transformation = {}
     numOfCams = len(holCams)
     mHol = np.array([0, 0, 0])
@@ -136,14 +125,13 @@ def calculate_transform(holCams, colCams):
 
         print("j")
 
-       # if my < m:  dimensions check
-        #        allCol0 = [Y0 zeros(n, m-my)];
-
         #rotation
 
         A = allHol0 * allCol0
+        print("1")
         U, S, V = np.linalg.svd(A)
-        R = V * np.transpose(U)
+        print("2")
+        R = np.matmul(V, np.transpose(U))
 
         print("k")
 
@@ -154,7 +142,7 @@ def calculate_transform(holCams, colCams):
         c = muX - b * muY * R;
         #transform = struct('T', R, 'b', b, 'c', repmat(c, n, 1));
         transformation['rotation'] = R
-        transformation['translation'] = np.tile(c, (n, 1))
+        transformation['translation'] = c.tolist()
         print("l")
 
     # The degenerate cases: X all the same, and Y all the same.
@@ -163,7 +151,7 @@ def calculate_transform(holCams, colCams):
         #Z = repmat(muX, n, 1);
         R = np.eye(my, m)
         transformation['rotation'] = R
-        transformation['translation'] = np.tile(muX, (n, 1))
+        transformation['translation'] = muX.tolist()
         print("m")
 
     #!constX & constY
@@ -171,7 +159,7 @@ def calculate_transform(holCams, colCams):
         d = 1
         R = np.eye(my, m)
         transformation['rotation'] = R
-        transformation['translation'] = np.tile(muX, (n, 1))
+        transformation['translation'] = muX.tolist()
         print("n")
 
     return transformation
@@ -182,8 +170,9 @@ def api_create_folder():
     try:
         global folder
         folder = str(int(time.time()))
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
         if not os.path.exists(folder):
-            os.makedirs(r"D:\Users\IMPACT\Documents\py_iReal-master\py_iReal-master\webserver/" + folder)
+            os.makedirs(path + folder)
 
             print("created folder: " + folder)
 
@@ -211,8 +200,9 @@ def api_save_images():
 
             start = time.time()
             pimg = Image.open(img.stream)
+            path = os.path.dirname(os.path.realpath(__file__)) + "/"
             #npimg = np.array(pimg)
-            filename = r"D:\Users\IMPACT\Documents\py_iReal-master\py_iReal-master\webserver/" + folder + "/" + str(start).replace('.', '_') + "_" + str(f) + ".jpg"
+            filename = path + folder + "/" + str(start).replace('.', '_') + "_" + str(f) + ".jpg"
             print("saving  as: " + filename)
 
             pimg.save(filename);
@@ -237,14 +227,12 @@ def api_save_images():
 def api_run_reconstruction():
     try:
         global folder
-        path = "D:/Users/IMPACT/Documents/py_iReal-master/py_iReal-master/webserver/"
-        os.system(path + "COLMAP.bat automatic_reconstructor \ --workspace_path " + path + folder + " \ --image_path " + path + folder)
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+        os.system(path + "COLMAP.bat automatic_reconstructor \ --workspace_path " + path + folder + " \ --image_path " + path + folder + " --quality medium")
 
         response_list = [("folder", folder)]
 
         response_dict = dict(response_list)
-
-        #print(response_dict)
 
 
         return flask.jsonify(response_dict)
@@ -259,7 +247,7 @@ def api_run_reconstruction():
 def api_get_transformation():
     try:
         global folder
-        path = "D:/Users/IMPACT/Documents/py_iReal-master/py_iReal-master/webserver/"
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
         os.system(path + 'COLMAP.bat model_converter --input_path ' + path + folder + '/dense/0/sparse --output_path ' + path + folder + '/dense/0/sparse --output_type TXT')
         print()
         numOfCams = request.json['numberOfCams']
@@ -310,8 +298,8 @@ def api_get_transformation():
 def api_query_reconstruction():
     try:
         global folder
-
-        with open(r"D:\Users\IMPACT\Documents\py_iReal-master\py_iReal-master\webserver/" + folder + "/dense/0/fused.ply", 'rb') as myfile:
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+        with open(path + folder + "/dense/0/fused.ply", 'rb') as myfile:
             data = myfile.read()
 
         return bytes(data)
@@ -324,10 +312,10 @@ def api_query_reconstruction():
 def api_query_cameras():
     try:
         global folder
-        path = "D:/Users/IMPACT/Documents/py_iReal-master/py_iReal-master/webserver/"
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
         os.system(path + 'COLMAP.bat model_converter --input_path ' + path + folder + '/dense/0/sparse --output_path '+ path + folder + '/dense/0/sparse --output_type TXT')
 
-        with open(r"D:\Users\IMPACT\Documents\py_iReal-master\py_iReal-master\webserver/" + folder + "/dense/0/sparse/images.txt", 'r') as myfile:
+        with open(path + folder + "/dense/0/sparse/images.txt", 'r') as myfile:
             data = myfile.read()
 
         return data
@@ -335,20 +323,6 @@ def api_query_cameras():
     except Exception as err:
 
         print("ko:", err)
-
-
-
-from flask import redirect, url_for
-@app.route('/')
-def index():
-    return redirect(url_for('hello_html'))
-
-
-
-from flask import abort
-@app.route('/broken')
-def broken_url():
-    abort(401)
 
 
 if __name__ == "__main__":
