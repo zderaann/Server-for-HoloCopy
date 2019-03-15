@@ -155,7 +155,7 @@ def calculate_transform(holCams, colCams):
         transformation['rotation2'] = R[1].tolist()
         transformation['rotation3'] = R[2].tolist()
         transformation['translation'] = muX.tolist()
-        
+
         print("----TOLIST----")
         print(muX)
         print(R)
@@ -282,7 +282,9 @@ def api_get_transformation():
         transform = calculate_transform(holCams, colCams)
 
 
-        response_list = [("transformation", transform)]
+        response_list = transform
+
+
 
         response_dict = dict(response_list)
         return flask.jsonify(response_dict)
