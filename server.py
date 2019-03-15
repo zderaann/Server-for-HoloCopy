@@ -23,6 +23,7 @@ app.config['JSON_SORT_KEYS'] = False
 def calculate_transform(holCams, colCams):
     print("Calculating transform")
     transformation = {}
+
     numOfCams = len(holCams)
     mHol = np.array([0, 0, 0])
     mCol = np.array([0, 0, 0])
@@ -30,15 +31,12 @@ def calculate_transform(holCams, colCams):
         mHol = mHol + holCams[i]
         mCol = mCol + colCams[i]
 
-    print("a")
-
     mHol = mHol / numOfCams  #a.mean(axis=1)
     mCol = mCol / numOfCams
     Q = np.array([[1, 0, 0], [0, -1, 0], [0, 0, 1]])
     allCol = np.zeros((3, numOfCams))
     allHol = np.zeros((3, numOfCams))
 
-    print("b")
 
     for i in range(numOfCams):
         holCams[i] = holCams[i] - mHol
@@ -53,42 +51,31 @@ def calculate_transform(holCams, colCams):
         allHol[1, i] = holCams[i][1]
         allHol[2, i] = holCams[i][2]
 
-    print("c")
-
     holNorm  = np.linalg.norm(allHol)
     colNorm = np.linalg.norm(allCol)
 
     scale = holNorm / colNorm
     transformation['scale'] = scale
 
-    print("d")
-
     for i in range(numOfCams):
         colCams[i] = scale * colCams[i]
 
-    print("e")
+
     allCol = scale * allCol.transpose()
 
     allHol = allHol.transpose()
 
     (n,m) = allHol.shape
     (ny,my) = allCol.shape
-    #mtx1, mtx2, disparity = procrustes(allHol.transpose(), allCol.transpose()) #ziskame transformovane kamery ale ne transformace
 
-    print("f")
 
     muX = allHol.transpose().mean(axis=1)
     muY = allCol.transpose().mean(axis=1)
-    print(muX)
-    print(muY)
-    print(allHol.shape)
     allHol0 = allHol - np.tile(muX, (n, 1))
-    print(allHol0.shape)
-    print("1")
-    print(allCol.shape)
+
+
     allCol0 = allCol - np.tile(muY, (n, 1))
 
-    print("g")
 
     sqHol = np.zeros(allHol0.shape)
     np.square(allHol0, out = sqHol)
@@ -98,23 +85,18 @@ def calculate_transform(holCams, colCams):
     sqCol = np.zeros(allCol0.shape)
     np.square(allCol0, out = sqCol)
 
-    print("h")
 
     ssqY = np.sum(sqCol.transpose(), 1)
 
-    print(ssqY)
 
     constX = np.all(ssqX <= abs((np.finfo(type(allHol[0, 0])).eps * n * muX)) ** 2)
     constY = np.all(ssqY <= abs((np.finfo(type(allCol[0, 0])).eps * n * muY)) ** 2)
-    print("1")
-    print(ssqX)
-    ssqX = np.sum(ssqX)
-    print(ssqX)
-    print(ssqY)
-    ssqY = np.sum(ssqY)
-    print(ssqY)
 
-    print("i")
+    ssqX = np.sum(ssqX)
+
+    ssqY = np.sum(ssqY)
+
+
 
     if not constX and not constY:
         normX = np.sqrt(ssqX)
@@ -123,44 +105,61 @@ def calculate_transform(holCams, colCams):
         allHol0 = allHol0 / normX
         allCol0 = allCol0 / normY
 
-        print("j")
 
-        #rotation
-
-        A = allHol0 * allCol0
-        print("1")
+        A = np.matmul(allHol0.transpose(), allCol0)
         U, S, V = np.linalg.svd(A)
-        print("2")
         R = np.matmul(V, np.transpose(U))
 
-        print("k")
+        print("----SHAPES----")
+        print(U.shape)
+        print(V.shape)
+        print(R.shape)
 
-        traceTA = np.sum(np.diagonal(S))
+
+        traceTA = np.sum(S)
         b = 1
         d = 1 + ssqY / ssqX - 2 * traceTA * normY / normX
         #Z = normY*Y0 * T + repmat(muX, n, 1);
-        c = muX - b * muY * R;
+        c = muX - b * np.matmul(muY,R);
         #transform = struct('T', R, 'b', b, 'c', repmat(c, n, 1));
-        transformation['rotation'] = R
+        transformation['rotation1'] = R[0].tolist()
+        transformation['rotation2'] = R[1].tolist()
+        transformation['rotation3'] = R[2].tolist()
         transformation['translation'] = c.tolist()
-        print("l")
+
+
+        print("----TOLIST----")
+        print(c)
+        print(R)
 
     # The degenerate cases: X all the same, and Y all the same.
     elif constX:
         d = 0
         #Z = repmat(muX, n, 1);
         R = np.eye(my, m)
-        transformation['rotation'] = R
+        transformation['rotation1'] = R[0].tolist()
+        transformation['rotation2'] = R[1].tolist()
+        transformation['rotation3'] = R[2].tolist()
         transformation['translation'] = muX.tolist()
-        print("m")
+
+        print("----TOLIST----")
+        print(muX)
+        print(R)
+
 
     #!constX & constY
     else:
         d = 1
         R = np.eye(my, m)
-        transformation['rotation'] = R
+        transformation['rotation1'] = R[0].tolist()
+        transformation['rotation2'] = R[1].tolist()
+        transformation['rotation3'] = R[2].tolist()
         transformation['translation'] = muX.tolist()
-        print("n")
+        
+        print("----TOLIST----")
+        print(muX)
+        print(R)
+
 
     return transformation
 
