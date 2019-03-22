@@ -37,6 +37,8 @@ def calculate_transform(holCams, colCams):
     allCol = np.zeros((3, numOfCams))
     allHol = np.zeros((3, numOfCams))
 
+    # C = -R' * t
+
 
     for i in range(numOfCams):
         holCams[i] = holCams[i] - mHol
@@ -54,27 +56,65 @@ def calculate_transform(holCams, colCams):
     holNorm  = np.linalg.norm(allHol)
     colNorm = np.linalg.norm(allCol)
 
+    print("---------HolNorm---------")
+    print(holNorm)
+    print("")
+
+    print("---------ColNom---------")
+    print(colNorm)
+    print("")
+
     scale = holNorm / colNorm
-    transformation['scale'] = scale
-
-    for i in range(numOfCams):
-        colCams[i] = scale * colCams[i]
 
 
-    allCol = scale * allCol.transpose()
+    print("---------SCALE---------")
+    print(str(scale))
+    print("")
+
+    #for i in range(numOfCams):
+    #    colCams[i] = scale * colCams[i]
+
+
+    allCol =  allCol.transpose()
 
     allHol = allHol.transpose()
 
+    print("---------HOLOLENS---------")
+    print(allHol)
+    print("")
+    print("---------COLMAP---------")
+    print(allCol)
+    print("")
+
+    #begin of procrustes
     (n,m) = allHol.shape
     (ny,my) = allCol.shape
 
+    print("------------------")
+    print("n = " + str(n) + ", m = " + str(m) + ", ny = " + str(ny) + ", my = " + str(my))
+    print("")
 
     muX = allHol.transpose().mean(axis=1)
     muY = allCol.transpose().mean(axis=1)
+
+    print("---------muX---------")
+    print(muX)
+    print("")
+    print("---------muY---------")
+    print(muY)
+    print("")
+
     allHol0 = allHol - np.tile(muX, (n, 1))
 
 
     allCol0 = allCol - np.tile(muY, (n, 1))
+
+    print("---------HOLOLENS0---------")
+    print(allHol0)
+    print("")
+    print("---------COLMAP0---------")
+    print(allCol0)
+    print("")
 
 
     sqHol = np.zeros(allHol0.shape)
@@ -96,11 +136,22 @@ def calculate_transform(holCams, colCams):
 
     ssqY = np.sum(ssqY)
 
+    print("------------------")
+    print("ssqX = " + str(ssqX) + ", ssqY = " + str(ssqY) + ", constX = " + str(constX) + ", constY = " + str(constY))
+    print("")
+
+
+
+
 
 
     if not constX and not constY:
         normX = np.sqrt(ssqX)
         normY = np.sqrt(ssqY)
+
+        print("------------------")
+        print("normX = " + str(normX) + ", normY = " + str(normY))
+        print("")
 
         allHol0 = allHol0 / normX
         allCol0 = allCol0 / normY
@@ -110,10 +161,23 @@ def calculate_transform(holCams, colCams):
         U, S, V = np.linalg.svd(A)
         R = np.matmul(V, np.transpose(U))
 
-        print("----SHAPES----")
-        print(U.shape)
-        print(V.shape)
-        print(R.shape)
+        print("---------A---------")
+        print(A)
+        print("")
+
+        print("---------U---------")
+        print(U)
+        print("")
+        print("---------S---------")
+        print(S)
+        print("")
+        print("---------V---------")
+        print(V)
+        print("")
+        print("---------R---------")
+        print(R)
+        print("")
+
 
 
         traceTA = np.sum(S)
@@ -121,16 +185,25 @@ def calculate_transform(holCams, colCams):
         d = 1 + ssqY / ssqX - 2 * traceTA * normY / normX
         #Z = normY*Y0 * T + repmat(muX, n, 1);
         c = muX - b * np.matmul(muY,R);
+
+        print("---------traceTA---------")
+        print(traceTA)
+        print("")
+
+        print("---------c---------")
+        print(c)
+        print("")
+        print("*****************************************************")
+
         #transform = struct('T', R, 'b', b, 'c', repmat(c, n, 1));
+        transformation['scale'] = traceTA * scale
         transformation['rotation1'] = R[0].tolist()
         transformation['rotation2'] = R[1].tolist()
         transformation['rotation3'] = R[2].tolist()
         transformation['translation'] = c.tolist()
 
 
-        print("----TOLIST----")
-        print(c)
-        print(R)
+
 
     # The degenerate cases: X all the same, and Y all the same.
     elif constX:
@@ -227,7 +300,12 @@ def api_run_reconstruction():
     try:
         global folder
         path = os.path.dirname(os.path.realpath(__file__)) + "/"
-        os.system(path + "COLMAP.bat automatic_reconstructor \ --workspace_path " + path + folder + " \ --image_path " + path + folder + " --quality medium")
+        print(request.json)
+
+        quality = request.json['folder']
+        print(quality)
+
+        os.system(path + "COLMAP.bat automatic_reconstructor \ --workspace_path " + path + folder + " \ --image_path " + path + folder + " --quality " + quality)
 
         response_list = [("folder", folder)]
 
