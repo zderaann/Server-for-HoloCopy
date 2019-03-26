@@ -37,8 +37,6 @@ def calculate_transform(holCams, colCams):
     allCol = np.zeros((3, numOfCams))
     allHol = np.zeros((3, numOfCams))
 
-    # C = -R' * t
-
 
     for i in range(numOfCams):
         holCams[i] = holCams[i] - mHol
@@ -320,6 +318,27 @@ def api_run_reconstruction():
     return "ok"
 
 
+def quaternion_to_matrix(q):
+    R = np.zeros((3,3))
+    qw = q[0]
+    qx = q[1]
+    qy = q[2]
+    qz = q[3]
+
+    R[0][0] = 1 - 2 * qy * qy - 2 * qz * qz
+    R[0][1] = 2 * qx * qy - 2 * qz * qw
+    R[0][2] = 2 * qx * qz + 2 * qy * qw
+
+    R[1][0] = 2 * qx * qy + 2 * qz * qw
+    R[1][1] = 1 - 2 * qx * qx - 2 * qz * qz
+    R[1][2] = 2 * qy * qz - 2 * qx * qw
+
+    R[2][0] = 2 * qx * qz - 2 * qy * qw
+    R[2][1] = 2 * qy * qz + 2 * qx * qw
+    R[2][2] = 1 - 2 * qx * qx - 2 * qy * qy
+
+    return R
+
 @app.route("/api/cv/get_transformation/", methods=['POST'])
 def api_get_transformation():
     try:
@@ -334,8 +353,12 @@ def api_get_transformation():
         holCams = {}
         #cams = request.json['cameras']
 
-        for i in range(0,numOfCams):
-            holCams[i] = np.array([float(request.json['cameras'][i]['position']['x']), float(request.json['cameras'][i]['position']['y']), float(request.json['cameras'][i]['position']['z'])])
+        for i in range(0, numOfCams):
+            t = np.array([float(request.json['cameras'][i]['position']['x']), float(request.json['cameras'][i]['position']['y']), float(request.json['cameras'][i]['position']['z'])])
+            q = np.array([float(request.json['cameras'][i]['rotation']['w']), float(request.json['cameras'][i]['rotation']['x']), float(request.json['cameras'][i]['rotation']['y']), float(request.json['cameras'][i]['rotation']['z'])])
+            R = quaternion_to_matrix(q)
+            holCams[i] = np.matmul(-R.transpose(), t)
+            #C = R' * t
             #print(holCams[i])
 
         with open(path + folder + "/dense/0/sparse/images.txt", 'r') as file:
@@ -355,7 +378,12 @@ def api_get_transformation():
                 file.readline()
                 parsed = info.split(' ')
                 # print(parsed)
-                colCams[int(parsed[0]) - 1] = np.array([float(parsed[5]), float(parsed[6]), float(parsed[7])])
+                #QW, QX, QY, QZ
+                q = np.array([float(parsed[1]), float(parsed[2]), float(parsed[3]), float(parsed[4])])
+                R = quaternion_to_matrix(q)
+                t = np.array([float(parsed[5]), float(parsed[6]), float(parsed[7])])
+                colCams[int(parsed[0]) - 1] = np.matmul(-R.transpose(), t)
+                # C = R' * t
 
         transform = calculate_transform(holCams, colCams)
 
