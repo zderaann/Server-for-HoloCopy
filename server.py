@@ -39,10 +39,12 @@ def calculate_transform(holCams, colCams):
 
 
     for i in range(numOfCams):
-        holCams[i] = holCams[i] - mHol
-        colCams[i] = colCams[i] - mCol
-        x = Q * colCams[i]
-        colCams[i] = x.diagonal()
+       # holCams[i] = holCams[i] - mHol
+       # colCams[i] = colCams[i] - mCol
+        colCams[i] = np.matmul(Q, np.array(colCams[i]))
+        #print(colCams[i])
+        #print(x)
+        # = x
         allCol[0, i] = colCams[i][0]
         allCol[1, i] = colCams[i][1]
         allCol[2, i] = colCams[i][2]
@@ -73,9 +75,9 @@ def calculate_transform(holCams, colCams):
     #    colCams[i] = scale * colCams[i]
 
 
-    allCol =  allCol.transpose()
+    #allCol =  allCol.transpose() #ne
 
-    allHol = allHol.transpose()
+    #allHol = allHol.transpose() #ne
 
     print("---------HOLOLENS---------")
     print(allHol)
@@ -92,8 +94,11 @@ def calculate_transform(holCams, colCams):
     print("n = " + str(n) + ", m = " + str(m) + ", ny = " + str(ny) + ", my = " + str(my))
     print("")
 
-    muX = allHol.transpose().mean(axis=1)
-    muY = allCol.transpose().mean(axis=1)
+    #muX = allHol.transpose().mean(axis=1)
+    #muY = allCol.transpose().mean(axis=1)
+
+    muX = allHol.mean(axis=0)
+    muY = allCol.mean(axis=0)
 
     print("---------muX---------")
     print(muX)
@@ -115,16 +120,11 @@ def calculate_transform(holCams, colCams):
     print("")
 
 
-    sqHol = np.zeros(allHol0.shape)
-    np.square(allHol0, out = sqHol)
+    ssqX = np.square(allHol0)
+    ssqX = sum(ssqX)
 
-    ssqX = np.sum(sqHol.transpose(), 1)
-
-    sqCol = np.zeros(allCol0.shape)
-    np.square(allCol0, out = sqCol)
-
-
-    ssqY = np.sum(sqCol.transpose(), 1)
+    ssqY = np.square(allCol0)
+    ssqY = sum(ssqY)
 
 
     constX = np.all(ssqX <= abs((np.finfo(type(allHol[0, 0])).eps * n * muX)) ** 2)
@@ -156,7 +156,10 @@ def calculate_transform(holCams, colCams):
 
 
         A = np.matmul(allHol0.transpose(), allCol0)
-        U, S, V = np.linalg.svd(A)
+        U, S, V = np.linalg.svd(A) # S je 16x1 misto 16x16 (jen diagonala), nevadi
+                                   # V je transpozovane oproti matlabu
+                                   # vraci trochu jiny vysledky nez matlab
+        V = V.transpose()
         R = np.matmul(V, np.transpose(U))
 
         print("---------A---------")
@@ -179,10 +182,14 @@ def calculate_transform(holCams, colCams):
 
 
         traceTA = np.sum(S)
-        b = 1
-        d = 1 + ssqY / ssqX - 2 * traceTA * normY / normX
+        #b = 1
+        b = traceTA * normX / normY
+       # d = 1 + ssqY / ssqX - 2 * traceTA * normY / normX
+        d = 1 - traceTA * traceTA
         #Z = normY*Y0 * T + repmat(muX, n, 1);
-        c = muX - b * np.matmul(muY,R);
+        Z = normX * traceTA * np.matmul(allCol0, R) + np.tile(muX, (n, 1))
+        c = muX - b * np.matmul(muY, R)
+
 
         print("---------traceTA---------")
         print(traceTA)
