@@ -14,6 +14,10 @@ app = flask.Flask(__name__)
 
 folder = ""
 
+rotation = []
+scale = 0.0
+translation = []
+
 
 
 # Configure the flask server
@@ -64,12 +68,12 @@ def calculate_transform(holCams, colCams):
     print(colNorm)
     print("")
 
-    scale = holNorm / colNorm
+    #scale = holNorm / colNorm
 
 
-    print("---------SCALE---------")
-    print(str(scale))
-    print("")
+    #print("---------SCALE---------")
+    #print(str(scale))
+    #print("")
 
     #for i in range(numOfCams):
     #    colCams[i] = scale * colCams[i]
@@ -201,42 +205,69 @@ def calculate_transform(holCams, colCams):
         print("*****************************************************")
 
         #transform = struct('T', R, 'b', b, 'c', repmat(c, n, 1));
-        transformation['scale'] = traceTA * scale
-        transformation['rotation1'] = R[0].tolist()
-        transformation['rotation2'] = R[1].tolist()
-        transformation['rotation3'] = R[2].tolist()
-        transformation['translation'] = c.tolist()
+        #transformation['scale'] = b
+        #transformation['rotation'] = R.tolist()
+        #transformation['rotation2'] = R[1].tolist()
+        #transformation['rotation3'] = R[2].tolist()
+        #transformation['translation'] = c.tolist()
+        Z = Z.transpose()
+        cams = []
+        for i in range(0, numOfCams):
+            for j in range(0, 3):
+                cams.append(Z[i][j])
 
 
+        transformation['cameras'] = cams
+
+        '''print("----TOLIST----")
+        print("----b----")
+        print(b)
+        print("----R----")
+        print(R.tolist())
+        print("----c----")
+        print(c.tolist())
+        print("----Z----")
+        print(Z.transpose().tolist())'''
+
+        print("----Z----")
+        print(Z.transpose().tolist())
+
+        #musi se zprumerovat
+        global translation
+        translation = c
+        global rotation
+        rotation = R
+        global scale
+        scale = b
 
 
-    # The degenerate cases: X all the same, and Y all the same.
-    elif constX:
-        d = 0
-        #Z = repmat(muX, n, 1);
-        R = np.eye(my, m)
-        transformation['rotation1'] = R[0].tolist()
-        transformation['rotation2'] = R[1].tolist()
-        transformation['rotation3'] = R[2].tolist()
-        transformation['translation'] = muX.tolist()
-
-        print("----TOLIST----")
-        print(muX)
-        print(R)
-
-
-    #!constX & constY
-    else:
-        d = 1
-        R = np.eye(my, m)
-        transformation['rotation1'] = R[0].tolist()
-        transformation['rotation2'] = R[1].tolist()
-        transformation['rotation3'] = R[2].tolist()
-        transformation['translation'] = muX.tolist()
-
-        print("----TOLIST----")
-        print(muX)
-        print(R)
+        # The degenerate cases: X all the same, and Y all the same.
+        ''' elif constX:
+            d = 0
+            #Z = repmat(muX, n, 1);
+            R = np.eye(my, m)
+            transformation['rotation1'] = R[0].tolist()
+            transformation['rotation2'] = R[1].tolist()
+            transformation['rotation3'] = R[2].tolist()
+            transformation['translation'] = muX.tolist()
+    
+            print("----TOLIST----")
+            print(muX)
+            print(R)
+    
+    
+        #!constX & constY
+        else:
+            d = 1
+            R = np.eye(my, m)
+            transformation['rotation1'] = R[0].tolist()
+            transformation['rotation2'] = R[1].tolist()
+            transformation['rotation3'] = R[2].tolist()
+            transformation['translation'] = muX.tolist()
+    
+            print("----TOLIST----")
+            print(muX)
+            print(R)'''
 
 
     return transformation
