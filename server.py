@@ -7,7 +7,7 @@ from PIL import Image
 import numpy as np
 import time
 import os
-
+import socket
 
 app = flask.Flask(__name__)
 
@@ -37,7 +37,7 @@ def calculate_transform(holCams, colCams):
 
     mHol = mHol / numOfCams  #a.mean(axis=1)
     mCol = mCol / numOfCams
-    Q = np.array([[1, 0, 0], [0, -1, 0], [0, 0, 1]])
+    Q = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]])
     allCol = np.zeros((3, numOfCams))
     allHol = np.zeros((3, numOfCams))
 
@@ -205,11 +205,11 @@ def calculate_transform(holCams, colCams):
         print("*****************************************************")
 
         #transform = struct('T', R, 'b', b, 'c', repmat(c, n, 1));
-        #transformation['scale'] = b
+        transformation['scale'] = b
         #transformation['rotation'] = R.tolist()
         #transformation['rotation2'] = R[1].tolist()
         #transformation['rotation3'] = R[2].tolist()
-        #transformation['translation'] = c.tolist()
+        transformation['translation'] = np.mean(c).tolist()
         Z = Z.transpose()
         cams = []
         for i in range(0, numOfCams):
@@ -310,12 +310,13 @@ def api_save_images():
             pimg = Image.open(img.stream)
             path = os.path.dirname(os.path.realpath(__file__)) + "/"
             #npimg = np.array(pimg)
-            filename = path + folder + "/" + str(start).replace('.', '_') + "_" + str(f) + ".jpg"
+            name = str(start).replace('.', '_') + "_" + str(f) + ".jpg"
+            filename = path + folder + "/" + name
             print("saving  as: " + filename)
 
             pimg.save(filename);
 
-            response_list = [("file", filename), ("folder", folder)]
+            response_list = [("file", name), ("folder", folder)]
 
             response_dict = dict(response_list)
 
@@ -470,9 +471,86 @@ def api_query_cameras():
         print("ko:", err)
 
 
+@app.route("/api/cv/download_model/", methods=['GET'])
+def api_download_model():
+    try:
+        global folder
+        #folder = "1547206402"
+        print("Getting path")
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+        modelpath =  path + folder + "/dense/0"
+        filename = modelpath + "/decimated.ply"
+
+        os.system('.\Blender\\blender.exe --background --python "' + path + 'decimation_script.py" -- "' + modelpath +'"')
+
+
+        print("Getting file")
+        verts = []
+        colours = []
+        faces = []
+
+        with open(filename, 'r') as myfile:
+            while True:
+                data = myfile.readline()
+                #print(data)
+                if data.startswith('element vertex'):
+                    numOfVerts = int(data.split(' ')[2].split('\n')[0])
+                    print("Number of vertices: " + str(numOfVerts))
+                elif data.startswith('element face'):
+                    numOfFaces= int(data.split(' ')[2].split('\n')[0])
+                    print("Number of faces: " + str(numOfFaces))
+                elif data.startswith('end_header'):
+                    break
+            for i in range(0, numOfVerts):
+                data = myfile.readline()
+                parsed = data.split('\n')[0]
+                parsed = parsed.split(' ')
+                verts.append(float(parsed[0]))
+                verts.append(float(parsed[1]))
+                verts.append(float(parsed[2]))
+
+                colours.append(float(parsed[3]))
+                colours.append(float(parsed[4]))
+                colours.append(float(parsed[5]))
+                #print(parsed)
+
+
+
+            for j in range(0, numOfFaces):
+                data = myfile.readline()
+                parsed = data.split('\n')[0]
+                parsed = parsed.split(' ')
+                num =  int(parsed[0])
+                if not num == 3:
+                    print(num)
+                    raise ValueError('Face is not a triangle!')
+
+                faces.append(int(parsed[1]))
+                faces.append(int(parsed[2]))
+                faces.append(int(parsed[3]))
+                #print([num,int(parsed[1]), int(parsed[2]), int(parsed[3])])
+
+       # verts, colours, faces = decimate(verts, colours, faces)
+        mesh = {}
+        print("Done")
+
+        mesh['verts'] = verts
+        mesh['faces'] = faces
+        mesh['cols'] = colours
+
+        response_list = mesh
+        response_dict = dict(response_list)
+        return flask.jsonify(response_dict)
+
+    except Exception as err:
+
+        print("ko:", err)
+
+
 if __name__ == "__main__":
     # app.config.update(MAX_CONTENT_LENGTH=100*10**6)
+    IP = socket.gethostbyname(socket.gethostname())
     app.run(port=9099
-            ,host='10.35.100.210')
+,host=IP)
     
 
