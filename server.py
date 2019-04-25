@@ -79,9 +79,9 @@ def calculate_transform(holCams, colCams):
     #    colCams[i] = scale * colCams[i]
 
 
-    #allCol =  allCol.transpose() #ne
+    allCol =  allCol.transpose()
 
-    #allHol = allHol.transpose() #ne
+    allHol = allHol.transpose()
 
     print("---------HOLOLENS---------")
     print(allHol)
@@ -202,15 +202,19 @@ def calculate_transform(holCams, colCams):
         print("---------c---------")
         print(c)
         print("")
-        print("*****************************************************")
+
 
         #transform = struct('T', R, 'b', b, 'c', repmat(c, n, 1));
         transformation['scale'] = b
-        #transformation['rotation'] = R.tolist()
-        #transformation['rotation2'] = R[1].tolist()
-        #transformation['rotation3'] = R[2].tolist()
-        transformation['translation'] = np.mean(c).tolist()
-        Z = Z.transpose()
+        transformation['rotation1'] = R[0].tolist()
+        transformation['rotation2'] = R[1].tolist()
+        transformation['rotation3'] = R[2].tolist()
+        transformation['translation'] = c.tolist()
+
+        print("---------Z---------")
+        print(Z)
+        print("*****************************************************")
+
         cams = []
         for i in range(0, numOfCams):
             for j in range(0, 3):
@@ -389,16 +393,22 @@ def api_get_transformation():
         #print()
         #print(request.json)
 
-        holCams = {}
+        holCamsDict = dict()
         #cams = request.json['cameras']
 
         for i in range(0, numOfCams):
             t = np.array([float(request.json['cameras'][i]['position']['x']), float(request.json['cameras'][i]['position']['y']), float(request.json['cameras'][i]['position']['z'])])
             q = np.array([float(request.json['cameras'][i]['rotation']['w']), float(request.json['cameras'][i]['rotation']['x']), float(request.json['cameras'][i]['rotation']['y']), float(request.json['cameras'][i]['rotation']['z'])])
             R = quaternion_to_matrix(q)
-            holCams[i] = np.matmul(-R.transpose(), t)
+            #holCamsDict[request.json['cameras'][i]['imageID']] = np.matmul(-R.transpose(), t)
+            holCamsDict[request.json['cameras'][i]['imageID']] = t
+            print(request.json['cameras'][i]['imageID'])
             #C = R' * t
             #print(holCams[i])
+
+        holCams = []
+        for key in sorted(holCamsDict):
+            holCams.append(holCamsDict[key])
 
         with open(path + folder + "/dense/0/sparse/images.txt", 'r') as file:
             line = file.readline()
@@ -411,7 +421,8 @@ def api_get_transformation():
                 #print('Number of cameras does not match, can\'t calculate transformation\n')
                 raise NameError('Number of cameras does not match, can\'t calculate transformation')
 
-            colCams = {}
+            colCamsDict = {}
+
             for i in range(numOfColCams):
                 info = file.readline()
                 file.readline()
@@ -421,8 +432,13 @@ def api_get_transformation():
                 q = np.array([float(parsed[1]), float(parsed[2]), float(parsed[3]), float(parsed[4])])
                 R = quaternion_to_matrix(q)
                 t = np.array([float(parsed[5]), float(parsed[6]), float(parsed[7])])
-                colCams[int(parsed[0]) - 1] = np.matmul(-R.transpose(), t)
+                colCamsDict[parsed[9]] = np.matmul(-R.transpose(), t)
+                print(parsed[9])
                 # C = R' * t
+
+        colCams = []
+        for key in sorted(colCamsDict):
+            colCams.append(colCamsDict[key])
 
         transform = calculate_transform(holCams, colCams)
 
