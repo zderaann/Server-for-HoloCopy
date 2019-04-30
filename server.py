@@ -18,6 +18,8 @@ rotation = []
 scale = 0.0
 translation = []
 
+mean = np.array([])
+
 
 
 # Configure the flask server
@@ -103,6 +105,9 @@ def calculate_transform(holCams, colCams):
 
     muX = allHol.mean(axis=0)
     muY = allCol.mean(axis=0)
+
+    global mean
+    mean = muY
 
     print("---------muX---------")
     print(muX)
@@ -393,6 +398,43 @@ def api_get_transformation():
         #print()
         #print(request.json)
 
+        with open(path + folder + "/dense/0/sparse/images.txt", 'r') as file:
+            line = file.readline()
+            while not line.startswith('# Number of images:'):
+                line = file.readline()
+
+            #print(line)
+            numOfColCams = int(line.split(' ')[4].split(',')[0])
+            #if numOfColCams != numOfCams:
+                #print('Number of cameras does not match, can\'t calculate transformation\n')
+            #    raise NameError('Number of cameras does not match, can\'t calculate transformation')
+
+            colCamsDict = {}
+            colRot = []
+            for i in range(numOfColCams):
+                info = file.readline()
+                file.readline()
+                parsed = info.split(' ')
+                # print(parsed)
+                #QW, QX, QY, QZ
+                q = np.array([float(parsed[1]), float(parsed[2]), float(parsed[3]), float(parsed[4])])
+                colRot.append(q[0])
+                colRot.append(q[1])
+                colRot.append(q[2])
+                colRot.append(q[3])
+                R = quaternion_to_matrix(q)
+                t = np.array([float(parsed[5]), float(parsed[6]), float(parsed[7])])
+                id = parsed[9].split('\n')
+                colCamsDict[id[0]] = np.matmul(-R.transpose(), t)
+                print(id[0])
+                # C = R' * t
+
+        colCams = []
+        for key in sorted(colCamsDict):
+            colCams.append(colCamsDict[key])
+
+        print()
+
         holCamsDict = dict()
         #cams = request.json['cameras']
 
@@ -408,40 +450,15 @@ def api_get_transformation():
 
         holCams = []
         for key in sorted(holCamsDict):
-            holCams.append(holCamsDict[key])
+            if key in colCamsDict:
+                holCams.append(holCamsDict[key])
 
-        with open(path + folder + "/dense/0/sparse/images.txt", 'r') as file:
-            line = file.readline()
-            while not line.startswith('# Number of images:'):
-                line = file.readline()
-
-            #print(line)
-            numOfColCams = int(line.split(' ')[4].split(',')[0])
-            if numOfColCams != numOfCams:
-                #print('Number of cameras does not match, can\'t calculate transformation\n')
+        if len(holCams) != len(colCams):
+                print('Number of cameras does not match, can\'t calculate transformation\n')
                 raise NameError('Number of cameras does not match, can\'t calculate transformation')
 
-            colCamsDict = {}
-
-            for i in range(numOfColCams):
-                info = file.readline()
-                file.readline()
-                parsed = info.split(' ')
-                # print(parsed)
-                #QW, QX, QY, QZ
-                q = np.array([float(parsed[1]), float(parsed[2]), float(parsed[3]), float(parsed[4])])
-                R = quaternion_to_matrix(q)
-                t = np.array([float(parsed[5]), float(parsed[6]), float(parsed[7])])
-                colCamsDict[parsed[9]] = np.matmul(-R.transpose(), t)
-                print(parsed[9])
-                # C = R' * t
-
-        colCams = []
-        for key in sorted(colCamsDict):
-            colCams.append(colCamsDict[key])
-
         transform = calculate_transform(holCams, colCams)
-
+        transform['rotcams'] = colRot
 
         response_list = transform
 
@@ -530,7 +547,13 @@ def api_download_model():
                 colours.append(float(parsed[5]))
                 #print(parsed)
 
+            global mean
 
+            for i in range(0, numOfVerts):
+                index = i * 3
+                verts[index] = verts[index] - mean[0]
+                verts[index+1] = -1 * (verts[index+1] - mean[1])
+                verts[index+2] = verts[index+2] - mean[2]
 
             for j in range(0, numOfFaces):
                 data = myfile.readline()
