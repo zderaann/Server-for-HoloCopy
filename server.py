@@ -753,6 +753,26 @@ def api_download_model():
         print("ko:", err)
 
 
+
+
+@app.route("/api/cv/get_textured_model/", methods=['GET'])
+def api_query_cameras():
+    try:
+        folder = "1562574263"
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+        modelpath = path + folder + "/dense/0"
+
+        print("Getting texture")
+
+        os.system(
+            '.\Blender\\blender.exe --background --python "' + path + 'texture_script.py" -- "' + modelpath + '"')
+
+
+    except Exception as err:
+
+        print("ko:", err)
+
+
 if __name__ == "__main__":
     # app.config.update(MAX_CONTENT_LENGTH=100*10**6)
     IP = socket.gethostbyname(socket.gethostname())
