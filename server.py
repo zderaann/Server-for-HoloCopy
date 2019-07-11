@@ -756,21 +756,117 @@ def api_download_model():
 
 
 @app.route("/api/cv/get_textured_model/", methods=['GET'])
-def api_query_cameras():
+def api_get_textured_model():
     try:
         folder = "1562574263"
         path = os.path.dirname(os.path.realpath(__file__)) + "/"
         modelpath = path + folder + "/dense/0"
+        filename = modelpath + "/decimated.ply"
 
-        print("Getting texture")
+        print("Converting color to texture")
 
         os.system(
             '.\Blender\\blender.exe --background --python "' + path + 'texture_script.py" -- "' + modelpath + '"')
+
+        print("Getting file")
+        verts = []
+        colours = []
+        faces = []
+        uvs = []
+
+        with open(filename, 'r') as myfile:
+            while True:
+                data = myfile.readline()
+                # print(data)
+                if data.startswith('element vertex'):
+                    numOfVerts = int(data.split(' ')[2].split('\n')[0])
+                    print("Number of vertices: " + str(numOfVerts))
+                elif data.startswith('element face'):
+                    numOfFaces = int(data.split(' ')[2].split('\n')[0])
+                    print("Number of faces: " + str(numOfFaces))
+                elif data.startswith('end_header'):
+                    break
+            for i in range(0, numOfVerts):
+                data = myfile.readline()
+                parsed = data.split('\n')[0]
+                parsed = parsed.split(' ')
+                verts.append(float(parsed[0]))
+                verts.append(float(parsed[1]))
+                verts.append(float(parsed[2]))
+
+                uvs.append(float(parsed[3]))
+                uvs.append(float(parsed[4]))
+
+                colours.append(float(parsed[5]))
+                colours.append(float(parsed[6]))
+                colours.append(float(parsed[7]))
+                # print(parsed)
+
+
+            for i in range(0, numOfVerts):
+                index = i * 3
+                vertex = np.array([verts[index], (verts[index + 1]), verts[index + 2]])
+
+                # TODO CONVERTING THE MODEL
+
+                verts[index] = vertex[0]
+                verts[index + 1] = vertex[1]
+                verts[index + 2] = vertex[2]
+
+            for j in range(0, numOfFaces):
+                data = myfile.readline()
+                parsed = data.split('\n')[0]
+                parsed = parsed.split(' ')
+                num = int(parsed[0])
+                if not num == 3:
+                    print(num)
+                    raise ValueError('Face is not a triangle!')
+
+                faces.append(int(parsed[1]))
+                faces.append(int(parsed[2]))
+                faces.append(int(parsed[3]))
+                # print([num,int(parsed[1]), int(parsed[2]), int(parsed[3])])
+
+        # verts, colours, faces = decimate(verts, colours, faces)
+        mesh = {}
+        print("Done")
+
+        mesh['verts'] = verts
+        mesh['faces'] = faces
+        mesh['cols'] = colours
+        mesh['uvs'] = uvs
+
+
+        response_list = mesh
+        response_dict = dict(response_list)
+        return flask.jsonify(response_dict)
 
 
     except Exception as err:
 
         print("ko:", err)
+
+
+
+@app.route("/api/cv/download_texture/", methods=['GET'])
+def api_download_texture():
+    try:
+        print("Downloading Texture")
+        folder = "1562574263"
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+        modelpath = path + folder + "/dense/0"
+
+
+        filename =  "texture.png"
+
+
+        return flask.send_from_directory(modelpath, filename)
+
+
+    except Exception as err:
+
+        print("ko:", err)
+
 
 
 if __name__ == "__main__":
