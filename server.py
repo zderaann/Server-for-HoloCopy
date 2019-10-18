@@ -20,6 +20,7 @@ scale = 0.0
 translation = np.array([])
 globmuY = np.array([])
 globnormY = 0.0
+i = 0
 
 mean = np.array([])
 
@@ -286,9 +287,20 @@ def api_create_folder():
         folder = str(int(time.time()))
         path = os.path.dirname(os.path.realpath(__file__)) + "/"
         if not os.path.exists(folder):
-            os.makedirs(path + folder)
+            workdir = path + folder
+            os.makedirs(workdir)
 
             print("created folder: " + folder)
+
+            # ADDED FOR RIG
+
+            os.makedirs(workdir + "/images")
+            os.makedirs(workdir + "/reconstruction")
+            #os.makedirs(workdir + "/sparse")
+            #os.makedirs(workdir + "/dense")
+            #os.makedirs(workdir + "/rig")
+            # -------------------
+
 
 
             response_list = [("folder", folder)]
@@ -416,24 +428,33 @@ def matrix_to_quaternion(R):
 
 
 
-@app.route("/api/cv/get_transformation/", methods=['POST'])
+@app.route("/api/cv/get_transformation/", methods=['POST']) #TODO FILTR KAMER (JEN CAMERA_0 pouzit)
 def api_get_transformation():
     try:
         global folder
         path = os.path.dirname(os.path.realpath(__file__)) + "/"
-        os.system(path + 'COLMAP.bat model_converter --input_path ' + path + folder + '/dense/0/sparse --output_path ' + path + folder + '/dense/0/sparse --output_type TXT')
+        os.system(path + 'COLMAP.bat model_converter --input_path ' + path + folder + '/dense/sparse --output_path ' + path + folder + '/dense/sparse --output_type TXT')                  #zmeneno pro rig
         print()
         numOfCams = request.json['numberOfCams']
         #print()
         #print(request.json)
+        numOfCamTypes = 0
+        with open(path + folder + "/dense/sparse/cameras.txt") as myfile:
+            line = myfile.readline()
+            while not line.startswith('# Number of cameras:'):
+                line = myfile.readline()
 
-        with open(path + folder + "/dense/0/sparse/images.txt", 'r') as file:
+            numOfCamTypes = int(line.split(' ')[-1].split('\n')[0])
+
+
+        with open(path + folder + "/dense/sparse/images.txt", 'r') as file:                  #zmeneno pro rig
             line = file.readline()
             while not line.startswith('# Number of images:'):
                 line = file.readline()
 
             #print(line)
             numOfColCams = int(line.split(' ')[4].split(',')[0])
+
             #if numOfColCams != numOfCams:
                 #print('Number of cameras does not match, can\'t calculate transformation\n')
             #    raise NameError('Number of cameras does not match, can\'t calculate transformation')
@@ -449,19 +470,24 @@ def api_get_transformation():
                 parsed = info.split(' ')
                 # print(parsed)
                 #QW, QX, QY, QZ
-                q = np.array([float(parsed[1]), float(parsed[2]), float(parsed[3]), float(parsed[4])])
-                colRotQuat.append(q[0])
-                colRotQuat.append(q[1])
-                colRotQuat.append(q[2])
-                colRotQuat.append(q[3])
-                R = quaternion_to_matrix(q)
-                t = np.array([float(parsed[5]), float(parsed[6]), float(parsed[7])])
-                id = parsed[9].split('\n')
-                colCamsDict[id[0]] = np.matmul(-R.transpose(), t)
-                colRotMats[id[0]] = R
-                colTransDict[id[0]] = t
-                print(id[0])
-                # C = R' * t
+                id = parsed[9].split('\n')[0]
+                print()
+                print(id)
+                if id.startswith('camera_0'):                   #zmeneno pro rig
+                    q = np.array([float(parsed[1]), float(parsed[2]), float(parsed[3]), float(parsed[4])])
+                    colRotQuat.append(q[0])
+                    colRotQuat.append(q[1])
+                    colRotQuat.append(q[2])
+                    colRotQuat.append(q[3])
+                    R = quaternion_to_matrix(q)
+                    t = np.array([float(parsed[5]), float(parsed[6]), float(parsed[7])])
+                    id = id.split('/')[1] .split('.')[0]                 #zmeneno pro rig
+                    print(id)
+                    colCamsDict[id] = np.matmul(-R.transpose(), t)
+                    colRotMats[id] = R
+                    colTransDict[id] = t
+                    print(id[0])
+                    # C = R' * t
 
         colCams = []
         colRot = []
@@ -502,6 +528,7 @@ def api_get_transformation():
 
         ### ROTACE KAMER ###
         global rotation
+        numOfColCams = int(numOfColCams / numOfCamTypes)                 #pridano pro rig
         for i in range(0, numOfColCams):
             index = i * 4
             q = np.array([colRotQuat[index], colRotQuat[index+1], colRotQuat[index + 2], -colRotQuat[index + 3]])
@@ -512,65 +539,43 @@ def api_get_transformation():
             colRotQuat[index + 1] = q2[1]
             colRotQuat[index + 2] = q2[2]
             colRotQuat[index + 3] = q2[3]
-        ### ROTACE KAMER ###
 
-        ''' 
-        u =[0   cameraInfo(i).width    cameraInfo(i).width    0                   0; ...
-            0   0                   cameraInfo(i).height   cameraInfo(i).height   0; ...
-            1   1                   1                   1                   1];
 
-        Kc = [cameraInfo(i).fx 0 cameraInfo(i).pp1; 0 cameraInfo(i).fy cameraInfo(i).pp2; 0 0 1];
-        tc = rc(i).t * ones(1,size(u,2));
-        Xc = rc(i).R' * (inv(Kc) * u - tc);
-        Xc = Qxz * Xc;
-        plot3d(Xc, 'x-r');
-        
-        
-        XH = (transform.b * Xc' * transform.T + ones(size(u,2),1) * transform.c(1,:))';
-        plot3d(XH, 'x-b');
-        for j = 1:size(u,2)
-            plot3d([Z(i,:)' XH(:,j)], 'x-b');
-        end '''
+        ###  Kalkulace rotace ###
 
-        ###  TEST MATLAB KODU ###
-        # nacist kamery z 'dense\0\sparse\cameras.txt' a naparsovat
-        # for each camera
-        # u
-        # K
-        # XH
-        # Xc
 
         XHx = [None] * (numOfColCams * 5)
         XHy = [None] * (numOfColCams * 5)
         XHz = [None] * (numOfColCams * 5)
 
-        with open(path + folder + "/dense/0/sparse/cameras.txt", 'r') as file:
+        with open(path + folder + "/dense/sparse/cameras.txt", 'r') as file:        #zmeneno pro rig
             line = file.readline()
             while not line.startswith('# Number of cameras:'):
                 line = file.readline()
 
-            for i in range(numOfColCams):
-                info = file.readline()
-                parsed = info.split(' ')
+            info = file.readline()                  #moved from for for rig
+            parsed = info.split(' ')
 
-                print('--------------Line---------------')
-                print(info)
+            print('--------------Line---------------')
+            print(info)
 
-                camID = int(parsed[0])
-                width = int(parsed[2])
-                height = int(parsed[3])
-                fx = float(parsed[4])
-                fy = float(parsed[5])
-                pp1 = float(parsed[6])
-                pp2 = float(parsed[7])
 
+            width = int(parsed[2])
+            height = int(parsed[3])
+            fx = float(parsed[4])
+            fy = float(parsed[5])
+            pp1 = float(parsed[6])
+            pp2 = float(parsed[7])
+
+            for key in sorted(colCamsDict):
+                camID = sorted(colCamsDict).index(key)
                 u = np.array([[0, width, width, 0, 0], [0, 0, height, height, 0], [1, 1, 1, 1, 1]])
                 K = np.array([[2 * fx, 0, 2.3 * pp1], [0, 2 * fy, 2.3 * pp2], [0, 0, 2.3]])
                 global scale
                 global translation
                 Qxz = np.array([[1, 0, 0], [0, -1, 0], [0, 0, 1]])
-                rct = colTrans[camID-1]
-                rcR = colRot[camID-1]
+                rct = colTrans[camID]
+                rcR = colRot[camID]
 
                 print('--------------rc.t---------------')
                 print(rct)
@@ -597,21 +602,10 @@ def api_get_transformation():
                 print(XH)
 
                 for j in range(0, 5): #XH[rada, sloupec]
-                    XHx[(5 * (camID-1)) + j] = XH[0, j]
-                    XHy[(5 * (camID-1)) + j] = XH[1, j]
-                    XHz[(5 * (camID-1)) + j] = XH[2, j]
+                    XHx[(5 * (camID)) + j] = XH[0, j]
+                    XHy[(5 * (camID)) + j] = XH[1, j]
+                    XHz[(5 * (camID)) + j] = XH[2, j]
 
-
-
-        #for i in range(0, numOfColCams):
-
-
-
-
-
-
-
-        ###  TEST MATLAB KODU ###
 
         transform['rotcams'] = colRotQuat
         transform['XHx'] = XHx
@@ -660,6 +654,15 @@ def api_query_cameras():
 
         print("ko:", err)
 
+def decimate_model():
+    global folder
+    # folder = "1547206402"
+    print("Decimating model")
+    path = os.path.dirname(os.path.realpath(__file__)) + "/"
+    modelpath = path + folder + "/dense"                  #zmeneno pro rig
+
+    os.system('.\Blender\\blender.exe --background --python "' + path + 'decimation_script.py" -- "' + modelpath + '"')
+    return
 
 @app.route("/api/cv/download_model/", methods=['GET'])
 def api_download_model():
@@ -668,10 +671,11 @@ def api_download_model():
         #folder = "1547206402"
         print("Getting path")
         path = os.path.dirname(os.path.realpath(__file__)) + "/"
-        modelpath =  path + folder + "/dense/0"
+        modelpath = path + folder + "/dense/0"
         filename = modelpath + "/decimated.ply"
 
-        os.system('.\Blender\\blender.exe --background --python "' + path + 'decimation_script.py" -- "' + modelpath +'"')
+        decimate_model()
+        #os.system('.\Blender\\blender.exe --background --python "' + path + 'decimation_script.py" -- "' + modelpath +'"')
 
 
         print("Getting file")
@@ -758,15 +762,19 @@ def api_download_model():
 @app.route("/api/cv/get_textured_model/", methods=['GET'])
 def api_get_textured_model():
     try:
-        folder = "1562574263"
+        global folder
+        #folder = "1562574263"
         path = os.path.dirname(os.path.realpath(__file__)) + "/"
-        modelpath = path + folder + "/dense/0"
+        modelpath = path + folder + "/dense"                  #zmeneno pro rig
         filename = modelpath + "/decimated.ply"
 
-        print("Converting color to texture")
+        #decimate_model()
+
+
+        print("Decimation and texture baking")
 
         os.system(
-            '.\Blender\\blender.exe --background --python "' + path + 'texture_script.py" -- "' + modelpath + '"')
+            '.\Blender\\blender.exe --background --python "' + path + 'decimation_texture_bake.py" -- "' + modelpath + '"')
 
         print("Getting file")
         verts = []
@@ -805,9 +813,11 @@ def api_get_textured_model():
 
             for i in range(0, numOfVerts):
                 index = i * 3
-                vertex = np.array([verts[index], (verts[index + 1]), verts[index + 2]])
 
-                # TODO CONVERTING THE MODEL
+                vertex = np.array([verts[index], -1.0 * (verts[index + 1]), verts[index + 2]])
+                # vertex = vertex - globmuY
+                # vertex = vertex / globnormY
+                vertex = scale * np.matmul(vertex, rotation) + translation
 
                 verts[index] = vertex[0]
                 verts[index + 1] = vertex[1]
@@ -852,9 +862,10 @@ def api_get_textured_model():
 def api_download_texture():
     try:
         print("Downloading Texture")
-        folder = "1562574263"
+        #folder = "1562574263"
+        global folder
         path = os.path.dirname(os.path.realpath(__file__)) + "/"
-        modelpath = path + folder + "/dense/0"
+        modelpath = path + folder + "/dense"                  #zmeneno pro rig
 
 
         filename =  "texture.png"
@@ -866,6 +877,253 @@ def api_download_texture():
     except Exception as err:
 
         print("ko:", err)
+
+def write_header_to_file(file):
+    file.write("ImageFileName,"
+               "FrameToOrigin.m11,FrameToOrigin.m12,FrameToOrigin.m13,FrameToOrigin.m14,"
+               "FrameToOrigin.m21,FrameToOrigin.m22,FrameToOrigin.m23,FrameToOrigin.m24,"
+               "FrameToOrigin.m31,FrameToOrigin.m32,FrameToOrigin.m33,FrameToOrigin.m34,"
+               "FrameToOrigin.m41,FrameToOrigin.m42,FrameToOrigin.m43,FrameToOrigin.m44,"
+               "CameraViewTransform.m11,CameraViewTransform.m12,CameraViewTransform.m13,CameraViewTransform.m14,"
+               "CameraViewTransform.m21,CameraViewTransform.m22,CameraViewTransform.m23,CameraViewTransform.m24,"
+               "CameraViewTransform.m31,CameraViewTransform.m32,CameraViewTransform.m33,CameraViewTransform.m34,"
+               "CameraViewTransform.m41,CameraViewTransform.m42,CameraViewTransform.m43,CameraViewTransform.m44\n")
+
+
+
+@app.route("/api/cv/save_sensor_data/", methods=['POST'])
+def api_save_sensor_data():
+    try:
+        global folder
+
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+
+
+        start = time.time()
+        #global i
+        for f in request.files:
+            img = request.files[f]
+            sensor = request.form["sensor"]
+            pimg = Image.open(img.stream)
+            if sensor == "0":
+                pimg = pimg.transpose(Image.FLIP_TOP_BOTTOM)
+            else:
+
+                pimg = pimg.transpose(Image.ROTATE_270)
+                #pimg = pimg.transpose(Image.FLIP_LEFT_RIGHT)
+               # pimg = pimg.resize((480, 640), Image.ANTIALIAS) #mozna bude zase potreba
+
+            camname = "camera_" + sensor
+
+            if not os.path.exists(folder + "/images/" + camname):
+                os.makedirs(path + folder + "/images/" + camname)
+
+            if sensor == "0":
+                name = request.form["name"].replace('.', '_') + ".jpg"
+            else:
+                name = request.form["name"].replace('.', '_') + ".pgm"
+
+            filename = path + folder + "/images/" + camname + "/" + name
+            print("saving  as: " + filename)
+
+            pimg.save(filename)
+
+            csvfilename = path + folder + "/" + camname + ".csv"
+            fileexists = False
+            if os.path.exists(csvfilename):
+                fileexists = True
+
+            with open(csvfilename, 'a') as file:
+                if not fileexists:
+                    write_header_to_file(file)
+                file.write(camname + "/" + name + "," + request.form["frameToOrigin"] + "," + request.form["cameraViewTransform"] + "\n")
+            #transposed.save(filename)
+            #i = i + 1
+
+        response_list = [("folder", folder)]
+
+        response_dict = dict(response_list)
+
+        #print(response_dict)
+        end = time.time()
+        print("Processing time: {} ".format(end - start))
+        return flask.jsonify(response_dict)
+
+    except Exception as err:
+        print("ko:", err)
+
+    return "ok"
+
+
+def registration(name, filename):
+    global folder
+
+    path = os.getcwd() + "/"
+    workdir = path + folder
+
+    listname = workdir + "/imagelist" + name + ".txt"
+    with open(listname, 'a') as imagelist:
+        imagelist.write(filename + '\n')
+
+    numlines = sum(1 for line in open(listname))
+    if numlines == 5:
+        os.system(
+            path + "COLMAP.bat feature_extractor --database_path " + workdir + "/database.db --image_path " + workdir + "/images --image_list_path " + listname + " --SiftExtraction.num_threads 2")
+
+        os.system(
+            path + "COLMAP.bat vocab_tree_matcher --database_path " + workdir + "/database.db --VocabTreeMatching.vocab_tree_path " + path + "vocab_tree.bin --VocabTreeMatching.match_list_path " + listname + " --SiftMatching.num_threads 2")
+
+
+        '''os.system(
+            path + "COLMAP.bat exhaustive_matcher --database_path " + workdir + "/database.db --SiftMatching.num_threads 2")
+
+        os.system(
+            path + "COLMAP.bat feature_extractor --database_path " + workdir + "/database.db --image_path " + workdir + "/images --ImageReader.single_camera_per_folder 1 --image_list_path " + listname + " --SiftExtraction.num_threads 2")'''
+
+        '''
+        os.system(
+            path + "COLMAP.bat mapper --database_path " + workdir + "/database.db --image_path " + workdir + "/images --export_path " + workdir + "/sparse --Mapper.num_threads 2")
+        
+        os.system(
+            path + "COLMAP.bat bundle_adjuster --input_path " + workdir + "/sparse --output_path " + workdir + "/sparse")'''
+
+
+
+@app.route("/api/cv/register_images/", methods=['POST'])
+def api_register_images():
+    try:
+        global folder
+
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+        path = path.replace('\\', '/')
+
+        start = time.time()
+        #global i
+        for f in request.files:
+            img = request.files[f]
+
+            pimg = Image.open(img.stream)
+            if request.form["sensor"] == "0":
+                pimg = pimg.transpose(Image.FLIP_TOP_BOTTOM)
+            else:
+
+                pimg = pimg.transpose(Image.ROTATE_270) # for left-left
+                pimg = pimg.transpose(Image.FLIP_LEFT_RIGHT)
+                pimg = pimg.resize((240, 320), Image.ANTIALIAS)
+
+            if not os.path.exists(folder + "/images/camera_" + request.form["sensor"]):
+                os.makedirs(path + folder + "/images/camera_" + request.form["sensor"])
+
+            name = request.form["name"].replace('.', '_') + ".jpg"
+            filename = path + folder + "/images/camera_" + request.form["sensor"] + "/" + name
+            print("saving  as: " + filename)
+
+            pimg.save(filename)
+            registration(name, "camera_" + request.form["sensor"] + "/" + name)
+            #transposed.save(filename)
+            #i = i + 1
+
+        response_list = [("folder", folder)]
+
+        response_dict = dict(response_list)
+
+        #print(response_dict)
+        end = time.time()
+        print("Processing time: {} ".format(end - start))
+        return flask.jsonify(response_dict)
+
+    except Exception as err:
+        print("ko:", err)
+
+    return "ok"
+
+
+def create_config_file():
+    global folder
+    path = os.path.dirname(os.path.realpath(__file__)) + "/"
+
+    workdir = path + folder
+
+    with open(workdir + "/sparse/0/cameras.txt", 'r') as camfile:
+        line = camfile.readline()
+        while not line.startswith("# Number"):
+            line = camfile.readline()
+
+        numofcams = int(line.split(' ')[-1].split('\n')[0])
+        with open(workdir + "/camsconfig.json", 'w') as config:
+            config.write("[{\"ref_camera_id\": 1, \"cameras\": [")
+            for i in range(0, numofcams):
+                line = camfile.readline()
+                camid = int(line.split(' ')[0])
+                config.write("{\"camera_id\": 1, \"image_prefix\": \"camera_" + str(camid - 1) + "\"}")
+
+                if i != numofcams - 1:
+                    config.write(", ")
+            config.write("]}]")
+
+
+
+
+@app.route("/api/cv/run_reconstruction_for_rig/", methods=['POST'])
+def api_run_reconstruction_for_rig():
+    try:
+        global folder
+        path = os.path.dirname(os.path.realpath(__file__)) + "/"
+        print(request.json)
+
+        workdir = path + folder
+
+        #schovat tohle kdyz prubezna registrace, pro prubeznou registraci problem s camera ID a rig config
+        '''os.system(
+            path + "COLMAP.bat feature_extractor --database_path " + workdir + "/database.db --image_path " + workdir + "/images --ImageReader.single_camera_per_folder 1 --SiftExtraction.num_threads 2")
+
+        os.system(
+            path + "COLMAP.bat exhaustive_matcher --database_path " + workdir + "/database.db --SiftMatching.num_threads 2")'''
+        #-----------
+
+        os.system(
+            path + "COLMAP.bat mapper --database_path " + workdir + "/database.db --image_path " + workdir + "/images --export_path " + workdir + "/sparse --Mapper.num_threads 2"
+        )
+
+        os.system(
+            path + "COLMAP.bat model_converter --input_path " + workdir + "/sparse/0 --output_path " + workdir + "/sparse/0 --output_type TXT"
+        )
+
+        create_config_file()
+
+        os.system(
+            path + "COLMAP.bat rig_bundle_adjuster --input_path " + workdir + "/sparse/0 --output_path " + workdir + "/rig --rig_config_path " + workdir + "/camsconfig.json"
+        )
+
+        os.system(
+            path + "COLMAP.bat image_undistorter --image_path " + workdir + "/images --input_path " + workdir + "/rig --output_path " + workdir + "/dense --output_type COLMAP --max_image_size 2000")
+
+        os.system(
+            path + "COLMAP.bat patch_match_stereo --workspace_path " + workdir + "/dense --workspace_format COLMAP --PatchMatchStereo.geom_consistency true")
+
+        os.system(
+            path + "COLMAP.bat stereo_fusion --workspace_path " + workdir + "/dense --workspace_format COLMAP --input_type geometric --output_path " + workdir + "/dense/fused.ply")
+
+        os.system(
+            path + "COLMAP.bat poisson_mesher --input_path " + workdir + "/dense/fused.ply --output_path " + workdir + "/dense/meshed-poisson.ply --PoissonMeshing.num_threads 2")
+
+        response_list = [("folder", folder)]
+
+        response_dict = dict(response_list)
+
+
+        return flask.jsonify(response_dict)
+
+    except Exception as err:
+        print("ko:", err)
+
+    return "ok"
+
+
+#TODO funkce pro rekonstrukci pomoci reconstruction_script.py
+
+
+
 
 
 

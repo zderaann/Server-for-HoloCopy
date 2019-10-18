@@ -33,9 +33,14 @@ def register():
             while modDec.face_count >= 20000:
                 modDec.ratio *= 0.5
                 bpy.context.scene.update()
-                
-                
-    bpy.ops.export_mesh.ply(filepath= argv[0] + "/decimated.ply", use_normals=False, use_uv_coords=False)
+
+    bpy.ops.object.modifier_apply(modifier="Decimate")
+    
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.uv.smart_project(angle_limit=66.0, island_margin=0.0, user_area_weight=0.0, use_aspect=True, stretch_to_bounds=True)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    bpy.ops.export_mesh.ply(filepath= argv[0] + "/decimated.ply", use_normals=False, use_uv_coords=True)
 
 
 def unregister():
