@@ -67,8 +67,12 @@ def read_sensor_images(recording_path, camera_name):
     image_poses = read_sensor_poses(os.path.join(
         recording_path, camera_name + ".csv"))
 
-    image_paths = sorted(glob.glob(
-        os.path.join(recording_path,"images", camera_name, "*.jpg")))
+    if camera_name == "camera_0":
+        image_paths = sorted(glob.glob(
+            os.path.join(recording_path,"images", camera_name, "*.jpg")))
+    else:
+        image_paths = sorted(glob.glob(
+            os.path.join(recording_path,"images", camera_name, "*.pgm")))
 
     paths = []
     names = []
@@ -91,7 +95,7 @@ def synchronize_sensor_frames(recording_path, output_path):
     # Collect all sensor frames.
 
     images = {}
-    for i in range(0,5):
+    for i in range(0, 5):
         camera_name = "camera_" + str(i)
         images[camera_name] = read_sensor_images(recording_path, camera_name)
 
@@ -99,7 +103,7 @@ def synchronize_sensor_frames(recording_path, output_path):
     sync_frames = []
     sync_poses = []
 
-    for i in range(0,numOfImgs):
+    for i in range(0, numOfImgs):
         frames = []
         poses = []
         for j in range(0, 5):
@@ -108,7 +112,6 @@ def synchronize_sensor_frames(recording_path, output_path):
             poses.append(images[camera_name][3][i])
         sync_frames.append(frames)
         sync_poses.append(poses)
-
 
     return sync_frames, sync_poses
 
@@ -122,8 +125,12 @@ def run_reconstruction(workpath):
     sparse_hololens_path = reconstruction_path + "/sparse_hololens"
     dense_path = reconstruction_path + "/dense"
     rig_config_path = reconstruction_path + "/rig_config.json"
+    colmap_path = "E:/policmic/software/colmap/build/src/exe/Release/colmap.exe"
 
-    os.makedirs(reconstruction_path)
+    num_refinements = 3
+    dense = True
+
+    #os.makedirs(reconstruction_path)
     os.makedirs(sparse_colmap_path)
     os.makedirs(sparse_hololens_path)
     os.makedirs(dense_path)
@@ -137,12 +144,11 @@ def run_reconstruction(workpath):
 
 
     subprocess.call([
-        "COLMAP.bat", "feature_extractor",
+        colmap_path, "feature_extractor",
         "--image_path", image_path,
         "--database_path", database_path,
         "--image_list_path", image_list_path,
     ])
-    print(3)
 
 
     #GET CAMERA CALIBRATION
@@ -158,22 +164,17 @@ def run_reconstruction(workpath):
     #   camera_3 = right-front camera (vlc_rf)
     #   camera_4 = right-right camera (vlc_rr)
 
-    camera_model_id = 4
-    camera_model_name = "OPENCV"
-    camera_width = [1280,640,640,640,640]
-    camera_height = [720,480,480,480,480]
-    camera_params = { #TODO get calibration
-        "camera_0": "1545.412763409073 1551.2172618412867 597.2250365319205 322.12956014588366",
-        "camera_1": "450.072070 450.274345 320 240 "
-                  "-0.013211 0.012778 -0.002714 -0.003603",
-        "camera_2": "448.189452 452.478090 320 240 "
-                  "-0.009463 0.003013 -0.006169 -0.008975",
-        "camera_3": "449.435779 453.332057 320 240 "
-                  "-0.000305 -0.013207 0.003258 0.001051",
-        "camera_4": "450.301002 450.244147 320 240 "
-                  "-0.010926 0.008377 -0.003105 -0.004976",
+    camera_model_id = [1, 0, 0, 0, 0]
+    camera_model_name = ["PINHOLE", "SIMPLE_PINHOLE", "SIMPLE_PINHOLE", "SIMPLE_PINHOLE", "SIMPLE_PINHOLE"]
+    camera_width = [1280, 480, 480, 480, 480]
+    camera_height = [720, 640, 640, 640, 640]
+    camera_params = {
+        "camera_0": "1746.952735852030 1636.158022151854 593.756698889231 114.336687646988",
+        "camera_1": "446.0871 252.3111 307.6153",
+        "camera_2": "451.6767 235.0045 331.7945",
+        "camera_3": "453.1921 257.3943 324.4250",
+        "camera_4": "456.8176 239.6806 307.5680"
     }
-
 
     cameras_file = open(os.path.join(sparse_hololens_path, "cameras.txt"), "w")
     images_file = open(os.path.join(sparse_hololens_path, "images.txt"), "w")
@@ -192,7 +193,7 @@ def run_reconstruction(workpath):
         cursor.execute("INSERT INTO cameras"
                        "(model, width, height, params, prior_focal_length) "
                        "VALUES(?, ?, ?, ?, ?);",
-                       (camera_model_id, camera_width[i],
+                       (camera_model_id[i], camera_width[i],
                         camera_height[i], camera_params_float, 1))
 
         camera_id = cursor.lastrowid
@@ -204,8 +205,8 @@ def run_reconstruction(workpath):
         connection.commit()
 
         cameras_file.write("{} {} {} {} {}\n".format(
-            camera_id, camera_model_name,
-            camera_width, camera_height,
+            camera_id, camera_model_name[i],
+            camera_width[i], camera_height[i],
             camera_params[camera_name]))
 
     for image_names, image_poses in zip(frames, poses):
@@ -216,7 +217,7 @@ def run_reconstruction(workpath):
                 "SELECT image_id FROM images WHERE name=?;", (image_name,))
             image_id = cursor.fetchone()[0]
             qvec = rotmat2qvec(image_pose[:3, :3])
-            tvec = image_pose[:, 3]
+            tvec = image_pose[:, 3]         #SEM EXTERNI KALIBRACI RIGU
             images_file.write("{} {} {} {} {} {} {} {} {} {}\n\n".format(
                 image_id, qvec[0], qvec[1], qvec[2], qvec[3],
                 tvec[0], tvec[1], tvec[2], camera_id, image_name
@@ -229,11 +230,10 @@ def run_reconstruction(workpath):
     points_file.close()
 
     subprocess.call([
-        args.colmap_path, "exhaustive_matcher",
+        colmap_path, "exhaustive_matcher",
         "--database_path", database_path,
         "--SiftMatching.guided_matching", "true",
     ])
-    print(4)
 
     with open(rig_config_path, "w") as fid:
         fid.write("""[
@@ -270,7 +270,7 @@ def run_reconstruction(workpath):
                 camera_ids["camera_3"],
                 camera_ids["camera_4"]))
 
-    for i in range(args.num_refinements):
+    for i in range(num_refinements):
         if i == 0:
             sparse_input_path = sparse_hololens_path
         else:
@@ -278,47 +278,43 @@ def run_reconstruction(workpath):
 
         sparse_output_path = sparse_colmap_path + str(i)
 
-        mkdir_if_not_exists(sparse_output_path)
+        os.makedirs(sparse_output_path)
 
         subprocess.call([
-            args.colmap_path, "point_triangulator",
+            colmap_path, "point_triangulator",
             "--database_path", database_path,
             "--image_path", image_path,
-            "--import_path", sparse_input_path,
-            "--export_path", sparse_output_path,
+            "--input_path", sparse_input_path,
+            "--output_path", sparse_output_path,
         ])
-        print(5)
 
         subprocess.call([
-            args.colmap_path, "rig_bundle_adjuster",
+            colmap_path, "rig_bundle_adjuster",
             "--input_path", sparse_output_path,
             "--output_path", sparse_output_path,
             "--rig_config_path", rig_config_path,
             "--BundleAdjustment.max_num_iterations", str(25),
             "--BundleAdjustment.max_linear_solver_iterations", str(100),
         ])
-        print(6)
 
     if not dense:
         return
 
     subprocess.call([
-        args.colmap_path, "image_undistorter",
+        colmap_path, "image_undistorter",
         "--image_path", image_path,
         "--input_path", sparse_output_path,
         "--output_path", dense_path,
     ])
-    print(7)
 
     subprocess.call([
-        args.colmap_path, "patch_match_stereo",
+        colmap_path, "patch_match_stereo",
         "--workspace_path", dense_path,
         "--PatchMatchStereo.geom_consistency", "0",
         "--PatchMatchStereo.min_triangulation_angle", "2",
     ])
-    print(8)
     subprocess.call([
-        args.colmap_path, "stereo_fusion",
+        colmap_path, "stereo_fusion",
         "--workspace_path", dense_path,
         "--StereoFusion.min_num_pixels", "15",
         "--input_type", "photometric",
